@@ -236,7 +236,7 @@ class UserServiceImplTest {
 }
 ```
 
-## 條件構造器
+## 條件構造器 `QueryWrapper`、`UpdateWrapper`
 
 條件構造器是用來構造複雜的查詢條件的，譬如獲取 name = "zhangsan" 的數據，像前面介紹 MyBatis 所提供的查詢語句，都只能根據 id 去查詢，若想根據其他條件查詢，就得使用條件構造器，而 MyBatis 提供了兩種構造器，分別為`QueryWrapper`、`UpdateWrapper`。
 
@@ -334,8 +334,135 @@ public class MPConfiguration {
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
+        // 根據所使用的資料庫傳遞不同的類型，譬如用 MySQL 就傳 DbType.MYSQL
         interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
         return interceptor;
     }
 }
 ```
+
+### 分頁插件使用說明
+
+MyBatis 提供了一個分頁物件`Page`，這個物件包含了分頁的各種訊息，其中核心的屬性有:
+
+|屬性名|資料類型|default value|描述|
+|------|-------|-------------|----|
+|records|List|emptyList|查詢數據列表|
+|total  |Long|0        |查詢的數據列表總數量|
+|size   |Long|10       |每頁顯示的數據筆數|
+|current|Long|1        |當前頁數|
+
+分頁物件既可以當作分頁查詢的條件參數，也會當作分頁查詢的結果，若是當作條件參數，通常只需提供 `size`、`current` 屬性即可。
+
+for example
+
+```java
+// Ipage 為一個 interface，Page 則為 implement class
+IPage<T> page = new Page<>(current, size);
+```
+
+而 MyBatis-Plus 的 `BaseMapper`、`ServiceImpl`均提供了常用的分頁查詢的方法，例如:
+
+- `BaseMapper`的分頁查詢
+
+    ```java
+    IPage<T> selectPage(IPage<T> page,Wrapper<T> queryWrapper);
+    ```
+
+- `ServiceImpl`的分頁查詢
+
+    ```java
+    // 無條件分頁查詢
+    IPage<T> page(IPage<T> page);
+    // 條件分頁查詢
+    IPage<T> page(IPage<T> page, Wrapper<T> queryWrapper);
+    ```
+
+- 自定義 mapper
+
+    分頁功能也允許在自定義的 sql 上使用。
+
+    只要在 mapper interface 提供分頁物件作為參數及返回對象即可
+
+    ```java
+    IPage<UserVo> selectPageVo(IPage<?> page, Integer state);
+    ```
+
+    而在 Mapper.xml 裡的 sql 語句則無需關心分頁相關的邏輯
+
+    ```xml
+    <select id="selectPageVo" resultType="xxx.xxx.xxx.UserVo">
+    SELECT id,name FROM user WHERE state=#{state}
+    </select>
+    ```
+
+### JUnitTest 測試類
+
+#### Service 分頁查詢使用
+
+```java
+    @Test
+    public void testPageService() {
+        // 查詢第 2 頁，每頁有 3 條數據
+        Page<User> page = new Page<>(2, 3);
+        Page<User> result = userService.page(page);
+        result.getRecords().forEach(System.out::println);
+    }
+```
+
+#### Mapper 分頁查詢使用
+
+```java
+    @Test
+    public void testPageMapper(){
+        IPage<User> page = new Page<>(2, 3);
+        IPage<User> result = userMapper.selectPage(page, null);
+        result.getRecords().forEach(System.out::println);
+    }
+```
+
+#### 自定義 Mapper 分頁查詢使用
+
+##### step1. 首先在 `UserMapper` 新增自定義分頁方法
+
+```java
+IPage<User> selectUserPage(IPage<User> page);
+```
+
+##### step2. 創建 `resources/mapper/UserMapper.xml` 文件
+
+sql 語句也可直接在`UserMapper`透過 annotation 編寫。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.atguigu.springbootmybatisintegration.mapper.UserMapper">
+    <select id="selectUserPage" resultType="com.atguigu.springbootmybatisintegration.entity.User">
+        select * from user
+    </select>
+</mapper>
+```
+
+另外，spring boot 默認會去偵測路徑為 `classpath*:/mapper/**/*.xml` 的 Mapper.xml 文件，可以在 application.yml 中進行修改
+
+```yml
+mybatis-plus:
+mapper-locations: classpath*:/mapper/**/*.xml
+```
+
+##### JUnitTest測試類
+
+```java
+    @Test
+    public void testCustomMapper(){
+        IPage<User> page = new Page<>(2, 3);
+        IPage<User> result = userMapper.selectUserPage(page);
+        result.getRecords().forEach(System.out::println);
+    }
+```
+
+## MyBatisX 插件
+
+這是 IDEA 一個可以根據資料庫快速生成 entity、mapper.xml、mapper、service 等的插件工具，使用方式不複雜，若要使用時有不懂在查就好。
