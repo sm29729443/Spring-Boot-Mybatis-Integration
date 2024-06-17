@@ -6,3 +6,7 @@ spring:
     username: root
     password: Atguigu.123
     url: jdbc:mysql://192.168.246.100:3306/hello_mp?useUnicode=true&characterEncoding=utf-8&serverTimezone=GMT%2b8
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl

@@ -1,6 +1,6 @@
 # MyBatis Plus 快速入門
 
-對應的git repository Spring-Boot-Mybatis-Integration
+對應的git repository 為 Spring-Boot-Mybatis-Integration
 
 ## 資料庫資料準備
 
@@ -149,7 +149,7 @@ class UserMapperTest {
     }
     ```
 
-- 當 spring-boot 啟動時，會去自動配置這些帶有`@Mapper`的 interface 成為 spring 容器。
+- 另一個功能是讓有`@mapper` annotation 的 mapper 成為一個 Bean，spring boot 一啟動後會自動配置這些有者`@mapper`的 mapper 成為一個 Bean。
 
 - 若`@Mapper` interface 過多，可不用逐一配置`@Mapper`註解，可以使用`@MapperScan`指定 package path 掃描。
 
@@ -163,3 +163,179 @@ class UserMapperTest {
         }
     }
     ```
+
+## 通用 Service
+
+MyBatis 不只提供了 dao 層的通用Mapper，也封裝了service層，提供了一個通用 Service。
+
+### 通用 Service 實現步驟
+
+#### Step.1 創建 Service Interface
+
+主要是要 `extends IService<User>`
+
+```java
+public interface UserService extends IService<User> {
+}
+```
+
+#### Step.2 創建 Service 實現類
+
+當 implements `UserService` 後，應該要實現`IService<User>`的 Method 才對，那當然不可能是我們自己還要寫 Method 具體邏輯，因此是透過`extends ServiceImpl`來幫我們實現，而`ServiceImpl`傳入的泛型為 dao 層使用的 mapper 與 obj。
+
+```java
+@Service
+public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
+}
+```
+
+### JUnitTest 測試類
+
+觀看`userService.getById()`等 source code，會看到就是去調用 mapper 執行操作。
+
+```java
+@SpringBootTest
+class UserServiceImplTest {
+    @Autowired
+    private UserService userService;
+
+    @Test
+    public void testGetById() {
+        User byId = userService.getById(1);
+        System.out.println("byId:" + byId);
+    }
+
+    @Test
+    public void testSaveOrUpdate() {
+        User user1 = userService.getById(2);
+        user1.setName("xiaohu");
+        userService.saveOrUpdate(user1);
+
+        User user2 = new User();
+        user2.setName("lisi");
+        user2.setAge(24);
+        user2.setEmail("lisi@gmail.com");
+        userService.saveOrUpdate(user2);
+    }
+    
+    @Test
+    public void testSaveBatch(){
+        User user1 = new User();
+        user1.setName("dongdong");
+        user1.setAge(49);
+        user1.setEmail("dongdong@email.com");
+
+        User user2 = new User();
+        user2.setName("nannan");
+        user2.setAge(29);
+        user2.setEmail("nannan@email.com");
+
+        List<User> userList = List.of(user1, user2);
+        userService.saveBatch(userList);
+    }
+}
+```
+
+## 條件構造器
+
+條件構造器是用來構造複雜的查詢條件的，譬如獲取 name = "zhangsan" 的數據，像前面介紹 MyBatis 所提供的查詢語句，都只能根據 id 去查詢，若想根據其他條件查詢，就得使用條件構造器，而 MyBatis 提供了兩種構造器，分別為`QueryWrapper`、`UpdateWrapper`。
+
+### QueryWrapper
+
+- 主要用於查詢、刪除操作。
+- 只能構建 sql 中的 where 語句。
+
+```java
+    @Test
+    public void testQueryWrapper() {
+        // 查詢 name = Tom 的所有 User
+        QueryWrapper<User> queryWrapper1 = new QueryWrapper<>();
+        queryWrapper1.eq("name", "Tom");
+
+        // 查詢 email 域名為 baomidou.com 的所有 User
+        QueryWrapper<User> queryWrapper2 = new QueryWrapper<>();
+        // MyBatis 中不用自己去加上%%，MyBatis 會為我們加上
+        queryWrapper2.like("email", "@baomidou.com");
+
+        // 查詢所有 User 訊息並按照 age 字段降序排序
+        QueryWrapper<User> queryWrapper3 = new QueryWrapper<>();
+        queryWrapper3.orderByDesc("age");
+
+        // 查詢 age 位於 [20,30] 的所有 User
+        QueryWrapper<User> queryWrapper4 = new QueryWrapper<>();
+        queryWrapper4.between(  "age", 20, 30);
+
+        // 查詢 age 小於 20 或大於 30 的用戶
+        QueryWrapper<User> queryWrapper5 = new QueryWrapper<>();
+        queryWrapper5.lt("age", 20).or().gt("age", 30);
+
+        // email 域名為 baomidou.com 且 age < 30 or age > 40 的 User
+        QueryWrapper<User> queryWrapper6 = new QueryWrapper<>();
+        queryWrapper6.like("email", "baomidou.com")
+                .and(wrapper -> wrapper.lt("age", 30).or().gt("age", 40));
+
+        // 共用查詢結果程式碼
+        List<User> list = userService.list(queryWrapper5);
+        list.forEach(System.out::println);
+    }
+```
+
+### UpdateWrapper
+
+- 主要用於更新操作。
+- 可以構建 sql where 語句外，還能構建 set 語句。
+
+```java
+    @Test
+    public void testUpdateWrapper() {
+        // 將 name = Tom 的 User 的 email 改為 Tom@baobidou.com
+        UpdateWrapper<User> updateWrapper = new UpdateWrapper<>();
+        updateWrapper.eq("name", "Tom");
+        updateWrapper.set("email", "Tom@baomidou.com");
+        userService.update(updateWrapper);
+    }
+```
+
+### LambdaWrapper
+
+MyBatis 還提供了 Lambda 版本的 QueryWrapper、UpdateWrapper，與原先的版本相比功能是相同的，只是使用上更簡潔。
+
+```java
+    @Test
+    public void testLambdaQueryWrapper() {
+        // 查詢 name = Tom 的所有 User
+        LambdaQueryWrapper<User> lambdaQueryWrapper = new LambdaQueryWrapper<>();
+        lambdaQueryWrapper.eq(User::getName, "Tom");
+        List<User> list = userService.list(lambdaQueryWrapper);
+        list.forEach(System.out::println);
+    }
+
+    @Test
+    public void testLambdaUpdateWrapper() {
+        // 將 name = Tom 的所有 User 的油箱改為 Tom@tom.com
+        LambdaUpdateWrapper<User> lambdaUpdateWrapper = new LambdaUpdateWrapper<>();
+        lambdaUpdateWrapper.eq(User::getName, "Tom").set(User::getEmail, "Tom@tom.com");
+        userService.update(lambdaUpdateWrapper);
+    }
+```
+
+## 分頁插件
+
+MyBatis-Plus 提供了 分頁插件，可以快速的完成分頁查詢功能。
+
+### 分頁插件配置
+
+只要配置以下即可
+
+```java
+@Configuration
+public class MPConfiguration {
+
+    @Bean
+    public MybatisPlusInterceptor mybatisPlusInterceptor() {
+        MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
+        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
+        return interceptor;
+    }
+}
+```
